@@ -2,7 +2,7 @@
   "name": "nodejs-pubsub",
   "version": "1.0.0",
   "private": true,
-  "description": "Simple Pub/Sub subscriber service sample",
+  "description": "Pub/Sub publisher service sample",
   "main": "index.js",
   "author": "Google LLC",
   "license": "Apache-2.0",
@@ -19,7 +19,8 @@
     "system-test": "c8 mocha -p -j 2 test/system.test.js --timeout=360000 --exit"
   },
   "dependencies": {
-    "express": "^4.16.4"
+    "express": "^4.16.4",
+    "@google-cloud/pubsub": "^4.0.0"
   },
   "devDependencies": {
     "c8": "^10.0.0",

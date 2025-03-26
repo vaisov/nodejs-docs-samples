@@ -14,37 +14,143 @@
  * limitations under the License.
  */
 
-// [START cloudrun_pubsub_server_setup]
+// [START cloudrun_pubsub_publisher_setup]
 const express = require('express');
+const {PubSub} = require('@google-cloud/pubsub');
+
 const app = express();
+const pubsub = new PubSub();
 
 // This middleware is available in Express v4.16.0 onwards
 app.use(express.json());
-// [END cloudrun_pubsub_server_setup]
+app.use(express.urlencoded({extended: true}));
 
-// [START cloudrun_pubsub_handler]
-app.post('/', (req, res) => {
-  if (!req.body) {
-    const msg = 'no Pub/Sub message received';
-    console.error(`error: ${msg}`);
-    res.status(400).send(`Bad Request: ${msg}`);
-    return;
+// Hardcoded topic name
+const TOPIC_NAME = 'test-topic';
+// [END cloudrun_pubsub_publisher_setup]
+
+// [START cloudrun_pubsub_publisher_handler]
+// Publish a message to the specified Pub/Sub topic
+async function publishMessage(message) {
+  const topic = pubsub.topic(TOPIC_NAME);
+  
+  try {
+    const messageBuffer = Buffer.from(message);
+    const messageId = await topic.publish(messageBuffer);
+    console.log(`Message ${messageId} published: ${message}`);
+    return messageId;
+  } catch (error) {
+    console.error(`Error publishing message: ${error}`);
+    throw error;
   }
-  if (!req.body.message) {
-    const msg = 'invalid Pub/Sub message format';
-    console.error(`error: ${msg}`);
-    res.status(400).send(`Bad Request: ${msg}`);
-    return;
+}
+
+// Generate a random number between 1 and 1000
+function generateRandomNumber() {
+  return Math.floor(Math.random() * 1000) + 1;
+}
+
+// Publish a random number every 5 seconds
+let intervalId = null;
+
+function startPublishingRandomNumbers() {
+  if (intervalId) {
+    clearInterval(intervalId);
   }
+  
+  intervalId = setInterval(async () => {
+    try {
+      const randomNumber = generateRandomNumber();
+      await publishMessage(randomNumber.toString());
+    } catch (error) {
+      console.error('Failed to publish scheduled message:', error);
+    }
+  }, 5000);
+  
+  console.log(`Started publishing random numbers to ${TOPIC_NAME} every 5 seconds`);
+}
 
-  const pubSubMessage = req.body.message;
-  const name = pubSubMessage.data
-    ? Buffer.from(pubSubMessage.data, 'base64').toString().trim()
-    : 'World';
+// Start publishing when the app starts
+startPublishingRandomNumbers();
 
-  console.log(`Hello ${name}!`);
-  res.status(204).send();
+// Simple form for publishing messages
+app.get('/', (req, res) => {
+  res.send(`
+    <html>
+      <body>
+        <h1>Pub/Sub Publisher</h1>
+        <p>Publishing random numbers to topic "${TOPIC_NAME}" every 5 seconds</p>
+        <p>Last few messages:</p>
+        <ul id="messages">
+          <li>Waiting for messages...</li>
+        </ul>
+        
+        <h2>Publish Custom Message</h2>
+        <form method="POST" action="/publish">
+          <label for="message">Message:</label>
+          <input type="text" id="message" name="message" required><br><br>
+          <button type="submit">Publish</button>
+        </form>
+        
+        <script>
+          // This is just for demonstration purposes in the browser
+          const messagesList = document.getElementById('messages');
+          const messages = [];
+          
+          function addMessage(msg) {
+            messages.unshift(msg);
+            if (messages.length > 5) messages.pop();
+            
+            messagesList.innerHTML = '';
+            messages.forEach(m => {
+              const li = document.createElement('li');
+              li.textContent = m;
+              messagesList.appendChild(li);
+            });
+          }
+          
+          // Simulate receiving messages (in a real app, this would use websockets or SSE)
+          setInterval(function() {
+            const randomNumber = Math.floor(Math.random() * 1000) + 1;
+            addMessage("Random number " + randomNumber + " published at " + new Date().toLocaleTimeString());
+          }, 5000);
+        </script>
+      </body>
+    </html>
+  `);
 });
-// [END cloudrun_pubsub_handler]
+
+// API endpoint to publish a message
+app.post('/publish', async (req, res) => {
+  try {
+    if (!req.body.message) {
+      return res.status(400).send('Message content is required');
+    }
+    
+    const message = req.body.message;
+    const messageId = await publishMessage(message);
+    
+    res.status(200).send({
+      status: 'success',
+      messageId: messageId,
+      message: `Message published: ${message}`
+    });
+  } catch (error) {
+    res.status(500).send({
+      status: 'error',
+      message: `Failed to publish message: ${error.message}`
+    });
+  }
+});
+
+// API endpoint to get the status of the publisher
+app.get('/status', (req, res) => {
+  res.status(200).send({
+    status: 'active',
+    topic: TOPIC_NAME,
+    publishInterval: '5 seconds'
+  });
+});
+// [END cloudrun_pubsub_publisher_handler]
 
 module.exports = app;
